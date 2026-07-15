@@ -22,7 +22,15 @@ const getDashboard = async (user) => {
                     {
                         $match: {
                             active: true,
-                            expiresAt: { $gt: now }
+                            expiresAt: {
+                                $gt: now
+                            },
+                            $expr: {
+                                $lt: [
+                                    "$clicks",
+                                    "$maxClicks"
+                                ]
+                            }
                         }
                     },
                     {
@@ -46,6 +54,26 @@ const getDashboard = async (user) => {
                     {
                         $match: {
                             active: false
+                        }
+                    },
+                    {
+                        $count: "count"
+                    }
+                ],
+
+                clickLimitReached: [
+                    {
+                        $match: {
+                            active: true,
+                            expiresAt: {
+                                $gt: now
+                            },
+                            $expr: {
+                                $gte: [
+                                    "$clicks",
+                                    "$maxClicks"
+                                ]
+                            }
                         }
                     },
                     {
@@ -159,6 +187,9 @@ const getDashboard = async (user) => {
 
             disabledLinks:
                 result.disabledLinks[0]?.count || 0,
+
+            clickLimitReached:
+                result.clickLimitReached[0]?.count || 0,
 
             totalClicks:
                 result.totalClicks[0]?.clicks || 0,

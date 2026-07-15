@@ -8,7 +8,8 @@ const createLink = async (user, data) => {
 
     const existing = await Link.findOne({
         owner: user._id,
-        alias
+        alias,
+        active: true
     });
 
     if (existing) {
@@ -44,7 +45,8 @@ const createLink = async (user, data) => {
 const getLinks = async (user, queryParams) => {
 
     const mongoQuery = {
-        owner: user._id
+        owner: user._id,
+        active: true
     };
 
     if (queryParams.search) {
@@ -70,20 +72,63 @@ const getLinks = async (user, queryParams) => {
     }
 
     if (queryParams.status) {
-        switch (queryParams.status.toLowerCase()) {
-            case "active":
-                mongoQuery.active = true;
-                mongoQuery.expiresAt = { $gt: new Date() };
-                break;
 
-            case "disabled":
-                mongoQuery.active = false;
+        delete mongoQuery.active;
+
+        switch (queryParams.status.toLowerCase()) {
+
+            case "active":
+
+                mongoQuery.active = true;
+
+                mongoQuery.expiresAt = {
+                    $gt: new Date()
+                };
+
+                mongoQuery.$expr = {
+                    $lt: [
+                        "$clicks",
+                        "$maxClicks"
+                    ]
+                };
+
                 break;
 
             case "expired":
-                mongoQuery.expiresAt = { $lt: new Date() };
+
+                mongoQuery.active = true;
+
+                mongoQuery.expiresAt = {
+                    $lt: new Date()
+                };
+
                 break;
+
+            case "disabled":
+
+                mongoQuery.active = false;
+
+                break;
+
+            case "clicklimit":
+
+                mongoQuery.active = true;
+
+                mongoQuery.expiresAt = {
+                    $gt: new Date()
+                };
+
+                mongoQuery.$expr = {
+                    $gte: [
+                        "$clicks",
+                        "$maxClicks"
+                    ]
+                };
+
+                break;
+
         }
+
     }
 
     const totalLinks =
@@ -136,7 +181,9 @@ const updateLink = async (
 
         _id: id,
 
-        owner: user._id
+        owner: user._id,
+
+        active: true
 
     });
 
@@ -157,6 +204,8 @@ const updateLink = async (
                 owner: user._id,
 
                 alias,
+
+                active: true,
 
                 _id: { $ne: id }
 
