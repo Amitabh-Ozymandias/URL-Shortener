@@ -1,0 +1,7 @@
+const DEFAULT_MAX_CLICKS = 10;
+const DEFAULT_EXPIRY_DAYS = 7;
+
+module.exports = {
+    DEFAULT_MAX_CLICKS,
+    DEFAULT_EXPIRY_DAYS
+};
