@@ -338,7 +338,7 @@ const redirectLink = async (
             }
         },
         {
-            new: true
+            returnDocument: "after"
         }
     );
 
