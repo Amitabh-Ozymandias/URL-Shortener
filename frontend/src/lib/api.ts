@@ -1,10 +1,13 @@
 import axios from "axios";
 
 // Used only for displaying/constructing short link URLs in the UI.
-// API calls use a relative base URL and go through the Vite proxy.
-export const BASE_URL = "http://localhost:5000";
+// API calls use a relative base URL in development (and go through the Vite proxy).
+// In production, they call the deployed API directly.
+export const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://url-shortener-m01x.onrender.com" : "http://localhost:5000");
 
-export const api = axios.create({ baseURL: "" });
+export const api = axios.create({ 
+  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://url-shortener-m01x.onrender.com" : "") 
+});
 
 
 api.interceptors.request.use((config) => {

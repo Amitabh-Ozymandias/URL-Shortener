@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, BarChart3, Link2, Shield, Sparkles, Zap } from "lucide-react";
+import { BASE_URL } from "../lib/api";
 
 export default function Landing() {
   return (
@@ -49,7 +50,7 @@ export default function Landing() {
               <Link2 size={16} /> Shorten
             </button>
           </div>
-          <div className="mt-3 text-sm text-purple-300">→ http://localhost:5000/johndoe/launch-day</div>
+          <div className="mt-3 text-sm text-purple-300">→ {BASE_URL}/johndoe/launch-day</div>
         </div>
       </section>
 
