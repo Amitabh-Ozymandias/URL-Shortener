@@ -1,8 +1,11 @@
 import axios from "axios";
 
+// Used only for displaying/constructing short link URLs in the UI.
+// API calls use a relative base URL and go through the Vite proxy.
 export const BASE_URL = "http://localhost:5000";
 
-export const api = axios.create({ baseURL: BASE_URL });
+export const api = axios.create({ baseURL: "" });
+
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
@@ -24,5 +27,14 @@ api.interceptors.response.use(
   }
 );
 
-export const extractError = (err: any, fallback = "Something went wrong") =>
-  err?.response?.data?.message || err?.message || fallback;
+export const extractError = (err: any, fallback = "Something went wrong"): string => {
+  const data = err?.response?.data;
+  if (!data) return err?.message || fallback;
+  // Zod validation errors: { errors: [{ field, message }] }
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
+    return data.errors.map((e: { field?: string; message: string }) =>
+      e.field ? `${e.field}: ${e.message}` : e.message
+    ).join(" · ");
+  }
+  return data.message || err?.message || fallback;
+};
