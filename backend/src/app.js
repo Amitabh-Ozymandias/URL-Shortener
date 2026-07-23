@@ -16,6 +16,9 @@ const analyticsQueue = require("./utils/analyticsQueue");
 
 const app = express();
 
+// Enable strong ETag caching for HTTP 304 Not Modified responses
+app.set("etag", "strong");
+
 /*
 ====================================
 Middlewares
@@ -23,7 +26,14 @@ Middlewares
 */
 
 app.use(helmet());
-app.use(cors());
+
+// CORS with 24-hour preflight OPTIONS caching to reduce HTTP request overhead
+app.use(cors({
+    origin: true,
+    credentials: true,
+    maxAge: 86400 // 24 hours in seconds
+}));
+
 app.use(compression()); // HTTP response compression (gzip/deflate)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -51,6 +61,7 @@ app.get("/health", (req, res) => {
         success: true,
         message: "Server is healthy and performing optimally.",
         timestamp: new Date().toISOString(),
+        processId: process.pid,
         uptime: `${Math.floor(process.uptime())}s`,
         database: {
             status: dbStatusMap[dbState] || "unknown",

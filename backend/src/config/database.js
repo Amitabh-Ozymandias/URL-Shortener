@@ -10,6 +10,19 @@ const connectDB = async () => {
             connectTimeoutMS: 10000
         };
 
+        // Event listeners for database resilience
+        mongoose.connection.on("error", (err) => {
+            console.error("❌ MongoDB connection error:", err.message);
+        });
+
+        mongoose.connection.on("disconnected", () => {
+            console.warn("⚠️ MongoDB disconnected. Attempting automatic reconnect...");
+        });
+
+        mongoose.connection.on("reconnected", () => {
+            console.log("🔄 MongoDB reconnected successfully.");
+        });
+
         const conn = await mongoose.connect(process.env.MONGO_URI, options);
 
         console.log("==========================================");

@@ -15,7 +15,7 @@ const createLink = async (user, data) => {
         owner: user._id,
         alias,
         active: true
-    }).lean();
+    }).select("_id").lean();
 
     if (existing) {
         throw new AppError("Alias already exists.", 409);
@@ -48,6 +48,9 @@ const createLink = async (user, data) => {
 
     // Pre-cache slug redirect for sub-millisecond first hit
     cache.set(`slug:${slug}`, linkObject, 300);
+
+    // Clear negative 404 cache entry if any
+    cache.del(`miss:${slug}`);
 
     // Invalidate user dashboard cache
     cache.delPattern(`dash:${user._id}`);
@@ -122,7 +125,12 @@ const getLinks = async (user, queryParams) => {
 
     const totalLinks = await Link.countDocuments(mongoQuery);
 
-    const features = new APIFeatures(Link.find(mongoQuery).lean(), queryParams)
+    const features = new APIFeatures(
+        Link.find(mongoQuery)
+            .select("_id owner username alias slug originalUrl clicks maxClicks expiresAt active createdAt updatedAt")
+            .lean(),
+        queryParams
+    )
         .sort()
         .paginate();
 
@@ -162,7 +170,7 @@ const updateLink = async (user, id, body) => {
             alias,
             active: true,
             _id: { $ne: id }
-        }).lean();
+        }).select("_id").lean();
 
         if (duplicate) {
             throw new AppError("Alias already exists.", 409);
@@ -181,6 +189,7 @@ const updateLink = async (user, id, body) => {
     // Evict old and new cache entries
     cache.del(`slug:${oldSlug}`);
     cache.del(`slug:${link.slug}`);
+    cache.del(`miss:${link.slug}`);
     cache.delPattern(`dash:${user._id}`);
 
     return {
@@ -216,22 +225,32 @@ const deleteLink = async (user, id) => {
 };
 
 /**
- * Fast Sub-Millisecond Redirect with In-Memory Caching & Non-Blocking Analytics Queue
+ * Fast Sub-Millisecond Redirect with In-Memory Caching, Negative 404 Caching & Non-Blocking Analytics Queue
  */
 const redirectLink = async (username, alias, ip, userAgent) => {
     const slug = `${username.toLowerCase()}/${alias.toLowerCase()}`;
     const cacheKey = `slug:${slug}`;
+    const missKey = `miss:${slug}`;
+
+    // Fast 404 Negative Cache Check
+    if (cache.get(missKey)) {
+        throw new AppError("Link not found.", 404);
+    }
 
     let link = cache.get(cacheKey);
 
     if (!link) {
-        link = await Link.findOne({ slug }).lean();
+        link = await Link.findOne({ slug })
+            .select("_id originalUrl active expiresAt clicks maxClicks")
+            .lean();
 
         if (!link) {
+            // Cache 404 miss for 60 seconds to protect DB against scan attacks
+            cache.set(missKey, true, 60);
             throw new AppError("Link not found.", 404);
         }
 
-        // Cache resolution object in-memory for 5 minutes
+        // Cache positive resolution object in-memory for 5 minutes
         cache.set(cacheKey, link, 300);
     }
 

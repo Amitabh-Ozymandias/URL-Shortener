@@ -1,15 +1,19 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, BASE_URL, extractError } from "../lib/api";
 import { Link as LinkT } from "../lib/types";
-import { Search, Plus, Trash2, Edit3, ChevronLeft, ChevronRight, Loader2, ExternalLink, Sparkles } from "lucide-react";
+import { Search, Plus, Trash2, Edit3, ChevronLeft, ChevronRight, Loader2, ExternalLink, Sparkles, QrCode, BarChart3, Shuffle } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "../components/Modal";
 import CopyButton from "../components/CopyButton";
 import StatusBadge, { getLinkStatus } from "../components/StatusBadge";
+import QRCodeModal from "../components/QRCodeModal";
+import AnalyticsModal from "../components/AnalyticsModal";
+import { useAuth } from "../context/AuthContext";
 
 const ALIAS_RE = /^[a-zA-Z0-9_-]{3,30}$/;
 
 export default function Links() {
+  const { user } = useAuth();
   const [links, setLinks] = useState<LinkT[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -23,6 +27,10 @@ export default function Links() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editLink, setEditLink] = useState<LinkT | null>(null);
   const [confirmDel, setConfirmDel] = useState<LinkT | null>(null);
+
+  // Modals state for QR Code and Analytics
+  const [qrUrl, setQrUrl] = useState<{ url: string; alias: string } | null>(null);
+  const [analyticsLink, setAnalyticsLink] = useState<LinkT | null>(null);
 
   const fetchLinks = useCallback(async () => {
     setLoading(true);
@@ -47,33 +55,34 @@ export default function Links() {
     <div className="space-y-6">
       <header className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-3xl font-bold">My Links</h1>
-          <p className="text-white/60 text-sm mt-1">{totalLinks} total</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">My Links</h1>
+          <p className="text-white/60 text-sm mt-1">{totalLinks} links total</p>
         </div>
         <button onClick={() => setCreateOpen(true)} className="btn-primary text-sm inline-flex items-center gap-2">
           <Plus size={16} /> New Link
         </button>
       </header>
 
+      {/* Filter and Search Bar */}
       <div className="glass p-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-          <input placeholder="Search alias or URL..." className="input pl-10"
+          <input placeholder="Search alias or URL..." className="input pl-10 text-sm"
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
-        <select className="input max-w-[180px]" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-          <option value="">All statuses</option>
+        <select className="input max-w-[180px] text-sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+          <option value="">All Statuses</option>
           <option value="active">Active</option>
           <option value="expired">Expired</option>
           <option value="disabled">Disabled</option>
           <option value="clicklimit">Click Limit</option>
         </select>
-        <select className="input max-w-[180px]" value={sort} onChange={(e) => setSort(e.target.value)}>
+        <select className="input max-w-[180px] text-sm" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="createdAt">Sort: Created</option>
           <option value="clicks">Sort: Clicks</option>
           <option value="alias">Sort: Alias</option>
         </select>
-        <select className="input max-w-[130px]" value={order} onChange={(e) => setOrder(e.target.value as any)}>
+        <select className="input max-w-[130px] text-sm" value={order} onChange={(e) => setOrder(e.target.value as any)}>
           <option value="desc">Desc</option>
           <option value="asc">Asc</option>
         </select>
@@ -88,7 +97,7 @@ export default function Links() {
           <div className="w-14 h-14 rounded-2xl bg-brand-gradient flex items-center justify-center mx-auto mb-4">
             <Sparkles size={22} className="text-white" />
           </div>
-          <h3 className="text-lg font-semibold">No links yet</h3>
+          <h3 className="text-lg font-semibold">No links found</h3>
           <p className="text-white/60 text-sm mt-1">Create your first short link to get started.</p>
           <button onClick={() => setCreateOpen(true)} className="btn-primary mt-5 inline-flex items-center gap-2">
             <Plus size={16} /> Create link
@@ -96,7 +105,16 @@ export default function Links() {
         </div>
       ) : (
         <div className="grid gap-3">
-          {links.map(l => <LinkCard key={l._id} link={l} onEdit={() => setEditLink(l)} onDelete={() => setConfirmDel(l)} />)}
+          {links.map(l => (
+            <LinkCard
+              key={l._id}
+              link={l}
+              onEdit={() => setEditLink(l)}
+              onDelete={() => setConfirmDel(l)}
+              onQR={() => setQrUrl({ url: `${BASE_URL}/${l.slug}`, alias: l.alias })}
+              onAnalytics={() => setAnalyticsLink(l)}
+            />
+          ))}
         </div>
       )}
 
@@ -105,85 +123,125 @@ export default function Links() {
           <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p-1))} className="btn-ghost text-sm inline-flex items-center gap-1 disabled:opacity-40">
             <ChevronLeft size={14} /> Prev
           </button>
-          <div className="text-sm text-white/60">Page {page} of {totalPages}</div>
+          <div className="text-sm text-white/60 font-medium">Page {page} of {totalPages}</div>
           <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p+1))} className="btn-ghost text-sm inline-flex items-center gap-1 disabled:opacity-40">
             Next <ChevronRight size={14} />
           </button>
         </div>
       )}
 
-      <CreateModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={fetchLinks} />
+      {/* Modals */}
+      <CreateModal open={createOpen} username={user?.username || "user"} onClose={() => setCreateOpen(false)} onCreated={fetchLinks} />
       <EditModal link={editLink} onClose={() => setEditLink(null)} onSaved={fetchLinks} />
       <DeleteModal link={confirmDel} onClose={() => setConfirmDel(null)} onDeleted={fetchLinks} />
+      <QRCodeModal url={qrUrl?.url || null} alias={qrUrl?.alias || ""} onClose={() => setQrUrl(null)} />
+      <AnalyticsModal link={analyticsLink} onClose={() => setAnalyticsLink(null)} />
     </div>
   );
 }
 
-function LinkCard({ link, onEdit, onDelete }: { link: LinkT; onEdit: () => void; onDelete: () => void }) {
+function LinkCard({
+  link,
+  onEdit,
+  onDelete,
+  onQR,
+  onAnalytics
+}: {
+  link: LinkT;
+  onEdit: () => void;
+  onDelete: () => void;
+  onQR: () => void;
+  onAnalytics: () => void;
+}) {
   const shortUrl = `${BASE_URL}/${link.slug}`;
   const max = link.maxClicks ?? 10;
   const pct = Math.min(100, Math.round((link.clicks / Math.max(1, max)) * 100));
+
   return (
-    <div className="glass glass-hover p-5">
+    <div className="glass glass-hover p-5 space-y-4">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <a href={shortUrl} target="_blank" rel="noreferrer" className="text-lg font-semibold hover:text-purple-300 inline-flex items-center gap-1.5">
+            <a href={shortUrl} target="_blank" rel="noreferrer" className="text-lg font-bold hover:text-purple-300 inline-flex items-center gap-1.5 transition">
               {link.alias} <ExternalLink size={13} className="opacity-60" />
             </a>
             <StatusBadge status={getLinkStatus(link)} />
           </div>
-          <div className="text-sm text-purple-300 truncate mt-1 flex items-center gap-2">
+          <div className="text-sm text-purple-300 font-mono truncate mt-1 flex items-center gap-2">
             <span className="truncate">{shortUrl}</span>
             <CopyButton text={shortUrl} />
           </div>
           {link.originalUrl && <div className="text-xs text-white/50 truncate mt-1">→ {link.originalUrl}</div>}
         </div>
+
         <div className="flex items-center gap-2">
+          <button onClick={onAnalytics} className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-purple-400/40 hover:bg-white/10 transition text-purple-300" title="Analytics"><BarChart3 size={15} /></button>
+          <button onClick={onQR} className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-purple-400/40 hover:bg-white/10 transition" title="QR Code"><QrCode size={15} /></button>
           <button onClick={onEdit} className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-purple-400/40 hover:bg-white/10 transition" title="Edit"><Edit3 size={15} /></button>
-          <button onClick={onDelete} className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-red-400/40 hover:bg-red-500/10 transition" title="Delete"><Trash2 size={15} className="text-red-300" /></button>
+          <button onClick={onDelete} className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-red-400/40 hover:bg-red-500/10 transition text-red-300" title="Delete"><Trash2 size={15} /></button>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs pt-2 border-t border-white/5">
         <div>
-          <div className="text-white/50">Clicks</div>
+          <div className="text-white/50">Click Volume</div>
           <div className="font-semibold text-sm mt-0.5">{link.clicks} / {max}</div>
           <div className="progress mt-1.5"><div style={{ width: `${pct}%` }} /></div>
         </div>
         <div>
           <div className="text-white/50">Expires</div>
-          <div className="font-medium mt-0.5">{link.expiresAt ? new Date(link.expiresAt).toLocaleDateString() : "—"}</div>
+          <div className="font-medium mt-0.5">{link.expiresAt ? new Date(link.expiresAt).toLocaleDateString() : "Never"}</div>
         </div>
         <div>
           <div className="text-white/50">Created</div>
           <div className="font-medium mt-0.5">{new Date(link.createdAt).toLocaleDateString()}</div>
         </div>
         <div>
-          <div className="text-white/50">Active</div>
-          <div className="font-medium mt-0.5">{link.active ? "Yes" : "No"}</div>
+          <div className="text-white/50">Active Status</div>
+          <div className="font-medium mt-0.5">{link.active ? "Enabled" : "Disabled"}</div>
         </div>
       </div>
     </div>
   );
 }
 
-function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+function CreateModal({ open, username, onClose, onCreated }: { open: boolean; username: string; onClose: () => void; onCreated: () => void }) {
   const [url, setUrl] = useState("");
   const [alias, setAlias] = useState("");
   const [loading, setLoading] = useState(false);
   const [created, setCreated] = useState<{ shortUrl: string } | null>(null);
+
+  const generateRandomAlias = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setAlias(code);
+  };
 
   const reset = () => { setUrl(""); setAlias(""); setCreated(null); };
   const close = () => { reset(); onClose(); };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try { new URL(url); } catch { toast.error("Enter a valid URL"); return; }
-    if (!ALIAS_RE.test(alias)) { toast.error("Alias: 3-30 chars, letters/numbers/_/-"); return; }
+    try { new URL(url); } catch { toast.error("Enter a valid URL (starting with http:// or https://)"); return; }
+    
+    let targetAlias = alias.trim();
+    if (!targetAlias) {
+      const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+      targetAlias = "";
+      for (let i = 0; i < 6; i++) {
+        targetAlias += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    } else if (!ALIAS_RE.test(targetAlias)) {
+      toast.error("Alias: 3-30 chars, letters/numbers/_/-");
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await api.post("/api/links", { url, alias });
+      const res = await api.post("/api/links", { url, alias: targetAlias });
       setCreated({ shortUrl: res.data.link.shortUrl });
       toast.success("Link created!");
       onCreated();
@@ -196,7 +254,7 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
       {created ? (
         <div className="space-y-4">
           <div className="glass p-4 flex items-center justify-between gap-3">
-            <span className="text-purple-300 truncate">{created.shortUrl}</span>
+            <span className="text-purple-300 font-mono truncate">{created.shortUrl}</span>
             <CopyButton text={created.shortUrl} label="Copy" />
           </div>
           <div className="flex gap-2 justify-end">
@@ -207,18 +265,36 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="text-xs text-white/60 mb-1.5 block">Long URL</label>
-            <input className="input" placeholder="https://example.com/…" value={url} onChange={(e) => setUrl(e.target.value)} required />
+            <label className="text-xs text-white/60 mb-1.5 block">Target Long URL</label>
+            <input className="input text-sm" placeholder="https://example.com/long-page-url" value={url} onChange={(e) => setUrl(e.target.value)} required />
           </div>
           <div>
-            <label className="text-xs text-white/60 mb-1.5 block">Custom alias</label>
-            <input className="input" placeholder="my-alias" value={alias} onChange={(e) => setAlias(e.target.value)} required />
-            <p className="mt-1.5 text-[11px] text-white/40">3-30 chars: letters, numbers, _ or -</p>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs text-white/60">Custom Alias (Optional)</label>
+              <button
+                type="button"
+                onClick={generateRandomAlias}
+                className="text-[11px] text-purple-300 hover:underline flex items-center gap-1"
+              >
+                <Shuffle size={11} /> Auto-Generate
+              </button>
+            </div>
+            <input className="input text-sm font-mono" placeholder="my-custom-alias" value={alias} onChange={(e) => setAlias(e.target.value)} />
+            <p className="mt-1.5 text-[11px] text-white/40">3-30 characters (letters, numbers, _ or -). Leave blank for auto shortcode.</p>
           </div>
+
+          {/* Live Preview */}
+          <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-xs space-y-1">
+            <div className="text-white/40 font-semibold">Live Preview</div>
+            <div className="text-purple-300 font-mono truncate">
+              {BASE_URL}/{username}/{alias.trim() || "random-code"}
+            </div>
+          </div>
+
           <div className="flex gap-2 justify-end pt-2">
             <button type="button" onClick={close} className="btn-ghost">Cancel</button>
             <button disabled={loading} className="btn-primary inline-flex items-center gap-2">
-              {loading && <Loader2 size={14} className="animate-spin" />} Create
+              {loading && <Loader2 size={14} className="animate-spin" />} Create Link
             </button>
           </div>
         </form>
@@ -246,7 +322,7 @@ function EditModal({ link, onClose, onSaved }: { link: LinkT | null; onClose: ()
       body.alias = alias;
     }
     if (active !== link.active) body.active = active;
-    if (!Object.keys(body).length) { toast("No changes"); onClose(); return; }
+    if (!Object.keys(body).length) { toast("No changes made"); onClose(); return; }
     setLoading(true);
     try {
       await api.patch(`/api/links/${link._id}`, body);
@@ -257,16 +333,16 @@ function EditModal({ link, onClose, onSaved }: { link: LinkT | null; onClose: ()
   };
 
   return (
-    <Modal open={!!link} onClose={onClose} title="Edit link">
+    <Modal open={!!link} onClose={onClose} title="Edit link settings">
       <form onSubmit={submit} className="space-y-4">
         <div>
           <label className="text-xs text-white/60 mb-1.5 block">Alias</label>
-          <input className="input" value={alias} onChange={(e) => setAlias(e.target.value)} />
+          <input className="input font-mono text-sm" value={alias} onChange={(e) => setAlias(e.target.value)} />
         </div>
         <div className="flex items-center justify-between glass p-3">
           <div>
-            <div className="text-sm font-medium">Active</div>
-            <div className="text-xs text-white/50">Toggle the link on or off</div>
+            <div className="text-sm font-medium">Active Status</div>
+            <div className="text-xs text-white/50">Toggle redirection link on or off</div>
           </div>
           <button type="button" onClick={() => setActive(!active)}
             className={`relative w-12 h-7 rounded-full transition ${active ? "bg-brand-gradient" : "bg-white/10"}`}>
@@ -276,7 +352,7 @@ function EditModal({ link, onClose, onSaved }: { link: LinkT | null; onClose: ()
         <div className="flex gap-2 justify-end pt-2">
           <button type="button" onClick={onClose} className="btn-ghost">Cancel</button>
           <button disabled={loading} className="btn-primary inline-flex items-center gap-2">
-            {loading && <Loader2 size={14} className="animate-spin" />} Save
+            {loading && <Loader2 size={14} className="animate-spin" />} Save Changes
           </button>
         </div>
       </form>
@@ -297,15 +373,15 @@ function DeleteModal({ link, onClose, onDeleted }: { link: LinkT | null; onClose
     finally { setLoading(false); }
   };
   return (
-    <Modal open={!!link} onClose={onClose} title="Disable this link?">
+    <Modal open={!!link} onClose={onClose} title="Disable this short link?">
       <p className="text-sm text-white/70">
-        This will soft-delete <span className="font-semibold text-white">{link.alias}</span>. It will no longer redirect and will be hidden from your active links.
+        This will soft-delete <span className="font-semibold text-white font-mono">{link.alias}</span>. It will stop redirecting and will be marked as disabled.
       </p>
       <div className="flex gap-2 justify-end mt-6">
         <button onClick={onClose} className="btn-ghost">Cancel</button>
         <button onClick={submit} disabled={loading}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-r from-red-500 to-rose-600 hover:shadow-lg hover:shadow-red-500/30 transition disabled:opacity-60">
-          {loading && <Loader2 size={14} className="animate-spin" />} Disable
+          {loading && <Loader2 size={14} className="animate-spin" />} Disable Link
         </button>
       </div>
     </Modal>
