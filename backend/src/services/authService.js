@@ -24,29 +24,28 @@ const registerUser = async ({ username, email, password }) => {
     username = username.trim().toLowerCase();
     email = email.trim().toLowerCase();
 
-    const existingUsername = await User.findOne({
-        username
-    });
+    // Parallelize duplicate lookup and password hashing to cut registration latency in half
+    const [existingUser, hashedPassword] = await Promise.all([
+        User.findOne({
+            $or: [{ username }, { email }]
+        }),
+        bcrypt.hash(password, 10)
+    ]);
 
-    if (existingUsername) {
-        throw new AppError(
-            "Username already taken.",
-            409
-        );
+    if (existingUser) {
+        if (existingUser.username === username) {
+            throw new AppError(
+                "Username already taken.",
+                409
+            );
+        }
+        if (existingUser.email === email) {
+            throw new AppError(
+                "Email already exists.",
+                409
+            );
+        }
     }
-
-    const existingEmail = await User.findOne({
-        email
-    });
-
-    if (existingEmail) {
-        throw new AppError(
-            "Email already exists.",
-            409
-        );
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
         username,
