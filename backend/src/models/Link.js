@@ -116,4 +116,18 @@ linkSchema.index(
     }
 );
 
+// Fast user link filtering & pagination
+linkSchema.index({
+    owner: 1,
+    active: 1,
+    expiresAt: 1,
+    createdAt: -1
+});
+
+// Fast dashboard top clicked links lookup
+linkSchema.index({
+    owner: 1,
+    clicks: -1
+});
+
 module.exports = mongoose.model("Link", linkSchema);

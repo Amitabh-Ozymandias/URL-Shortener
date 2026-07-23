@@ -1,10 +1,8 @@
 const bcrypt = require("bcrypt");
-
 const User = require("../models/User");
-
 const generateToken = require("../utils/generateToken");
-
 const AppError = require("../utils/AppError");
+const cache = require("../utils/cacheService");
 
 /*
 ========================================
@@ -28,7 +26,7 @@ const registerUser = async ({ username, email, password }) => {
     const [existingUser, hashedPassword] = await Promise.all([
         User.findOne({
             $or: [{ username }, { email }]
-        }),
+        }).lean(),
         bcrypt.hash(password, 10)
     ]);
 
@@ -53,11 +51,20 @@ const registerUser = async ({ username, email, password }) => {
         password: hashedPassword
     });
 
+    const token = generateToken(user._id);
+
+    const userObj = {
+        _id: user._id,
+        username: user.username,
+        email: user.email
+    };
+
+    // Pre-cache session for immediate token usage
+    cache.set(`user:${user._id}`, userObj, 120);
+
     return {
         success: true,
-
-        token: generateToken(user._id),
-
+        token,
         user: {
             id: user._id,
             username: user.username,
@@ -85,7 +92,7 @@ const loginUser = async ({ email, password }) => {
 
     const user = await User.findOne({
         email
-    });
+    }).lean();
 
     if (!user) {
         throw new AppError(
@@ -106,11 +113,20 @@ const loginUser = async ({ email, password }) => {
         );
     }
 
+    const token = generateToken(user._id);
+
+    const userObj = {
+        _id: user._id,
+        username: user.username,
+        email: user.email
+    };
+
+    // Pre-cache user session in memory
+    cache.set(`user:${user._id}`, userObj, 120);
+
     return {
         success: true,
-
-        token: generateToken(user._id),
-
+        token,
         user: {
             id: user._id,
             username: user.username,

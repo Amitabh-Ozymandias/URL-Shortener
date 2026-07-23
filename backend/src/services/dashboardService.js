@@ -1,6 +1,14 @@
 const Link = require("../models/Link");
+const cache = require("../utils/cacheService");
 
 const getDashboard = async (user) => {
+    const cacheKey = `dash:${user._id}`;
+    const cachedStats = cache.get(cacheKey);
+
+    if (cachedStats) {
+        return cachedStats;
+    }
+
     const now = new Date();
 
     const dashboard = await Link.aggregate([
@@ -39,16 +47,16 @@ const getDashboard = async (user) => {
                 ],
 
                 expiredLinks: [
-    {
-        $match: {
-            active: true,
-            expiresAt: { $lt: now }
-        }
-    },
-    {
-        $count: "count"
-    }
-],
+                    {
+                        $match: {
+                            active: true,
+                            expiresAt: { $lt: now }
+                        }
+                    },
+                    {
+                        $count: "count"
+                    }
+                ],
 
                 disabledLinks: [
                     {
@@ -93,36 +101,36 @@ const getDashboard = async (user) => {
                 ],
 
                 remainingClicks: [
-    {
-        $group: {
-            _id: null,
-            remaining: {
-                $sum: {
-                    $cond: [
-                        {
-                            $gt: [
-                                {
-                                    $subtract: [
-                                        "$maxClicks",
-                                        "$clicks"
+                    {
+                        $group: {
+                            _id: null,
+                            remaining: {
+                                $sum: {
+                                    $cond: [
+                                        {
+                                            $gt: [
+                                                {
+                                                    $subtract: [
+                                                        "$maxClicks",
+                                                        "$clicks"
+                                                    ]
+                                                },
+                                                0
+                                            ]
+                                        },
+                                        {
+                                            $subtract: [
+                                                "$maxClicks",
+                                                "$clicks"
+                                            ]
+                                        },
+                                        0
                                     ]
-                                },
-                                0
-                            ]
-                        },
-                        {
-                            $subtract: [
-                                "$maxClicks",
-                                "$clicks"
-                            ]
-                        },
-                        0
-                    ]
-                }
-            }
-        }
-    }
-],
+                                }
+                            }
+                        }
+                    }
+                ],
 
                 mostClicked: [
                     {
@@ -171,40 +179,28 @@ const getDashboard = async (user) => {
 
     const result = dashboard[0];
 
-    return {
+    const response = {
         success: true,
 
         stats: {
-
-            totalLinks:
-                result.totalLinks[0]?.count || 0,
-
-            activeLinks:
-                result.activeLinks[0]?.count || 0,
-
-            expiredLinks:
-                result.expiredLinks[0]?.count || 0,
-
-            disabledLinks:
-                result.disabledLinks[0]?.count || 0,
-
-            clickLimitReached:
-                result.clickLimitReached[0]?.count || 0,
-
-            totalClicks:
-                result.totalClicks[0]?.clicks || 0,
-
-            remainingClicks:
-                result.remainingClicks[0]?.remaining || 0
-
+            totalLinks: result.totalLinks[0]?.count || 0,
+            activeLinks: result.activeLinks[0]?.count || 0,
+            expiredLinks: result.expiredLinks[0]?.count || 0,
+            disabledLinks: result.disabledLinks[0]?.count || 0,
+            clickLimitReached: result.clickLimitReached[0]?.count || 0,
+            totalClicks: result.totalClicks[0]?.clicks || 0,
+            remainingClicks: result.remainingClicks[0]?.remaining || 0
         },
 
-        mostClicked:
-            result.mostClicked[0] || null,
+        mostClicked: result.mostClicked[0] || null,
 
-        recentLinks:
-            result.recentLinks
+        recentLinks: result.recentLinks
     };
+
+    // Cache dashboard result for 15 seconds
+    cache.set(cacheKey, response, 15);
+
+    return response;
 };
 
 module.exports = {

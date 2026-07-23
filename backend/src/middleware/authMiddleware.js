@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const cache = require("../utils/cacheService");
 
 const protect = async (req, res, next) => {
     try {
@@ -13,20 +14,26 @@ const protect = async (req, res, next) => {
         }
 
         const token = authHeader.split(" ")[1];
-
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        const user = await User.findById(decoded.id).select("-password");
+        const cacheKey = `user:${decoded.id}`;
+        let user = cache.get(cacheKey);
 
         if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: "User not found"
-            });
+            user = await User.findById(decoded.id).select("-password").lean();
+
+            if (!user) {
+                return res.status(401).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            // Cache user session for 2 minutes to eliminate repeated DB queries across endpoints
+            cache.set(cacheKey, user, 120);
         }
 
         req.user = user;
-
         next();
     } catch (err) {
         return res.status(401).json({
